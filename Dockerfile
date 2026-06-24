@@ -1,46 +1,36 @@
-# Etapa 1: Build
+# ============================================================
+# STAGE 1: Build con Node
+# ============================================================
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copiar archivos de dependencias
+# Instalar dependencias primero (optimiza caché)
 COPY package*.json ./
-
-# Instalar dependencias
-RUN npm ci --prefer-offline --no-audit
+RUN npm ci
 
 # Copiar código fuente
 COPY . .
 
-# Build de la aplicación
+# Las variables VITE_ se pasan como build args
+ARG VITE_API_VENTAS_URL
+ARG VITE_API_DESPACHOS_URL
+ENV VITE_API_VENTAS_URL=$VITE_API_VENTAS_URL
+ENV VITE_API_DESPACHOS_URL=$VITE_API_DESPACHOS_URL
+
 RUN npm run build
 
-# Etapa 2: Runtime
-FROM node:20-alpine
+# ============================================================
+# STAGE 2: Servidor Nginx
+# ============================================================
+FROM nginx:alpine
 
-WORKDIR /app
+# Copiar el build al directorio de Nginx
+COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Crear usuario no-root para ejecutar la aplicación
-RUN addgroup -g 1001 -S nodejs && adduser -S appuser -u 1001
+# Configuración de Nginx para SPA (React Router)
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Instalar servidor HTTP ligero (http-server)
-RUN npm install -g http-server
+EXPOSE 80
 
-# Copiar solo los archivos necesarios del build anterior
-COPY --from=builder /app/dist /app/dist
-
-# Cambiar propiedad de los archivos
-RUN chown -R appuser:nodejs /app
-
-# Cambiar al usuario no-root
-USER appuser
-
-# Exponer puerto
-EXPOSE 3000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost:3000 || exit 1
-
-# Comando para ejecutar la aplicación
-CMD ["http-server", "dist", "-p", "3000", "--cors"]
+CMD ["nginx", "-g", "daemon off;"]
