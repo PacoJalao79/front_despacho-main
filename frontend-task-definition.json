@@ -1,34 +1,25 @@
 {
-  "taskDefinitionArn": "arn:aws:ecs:us-east-1:362352173704:task-definition/ep3-despachos-task:1",
+  "taskDefinitionArn": "arn:aws:ecs:us-east-1:362352173704:task-definition/ep3-frontend-task:1",
   "containerDefinitions": [
     {
-      "name": "despachos",
-      "image": "362352173704.dkr.ecr.us-east-1.amazonaws.com/ep3-despachos:latest",
+      "name": "frontend",
+      "image": "362352173704.dkr.ecr.us-east-1.amazonaws.com/ep3-frontend:latest",
       "cpu": 0,
       "portMappings": [
         {
-          "containerPort": 8080,
-          "hostPort": 8080,
+          "containerPort": 80,
+          "hostPort": 80,
           "protocol": "tcp"
         }
       ],
       "essential": true,
-      "environment": [
-        {
-          "name": "SERVER_PORT",
-          "value": "8080"
-        },
-        {
-          "name": "SPRING_PROFILES_ACTIVE",
-          "value": "prod"
-        }
-      ],
+      "environment": [],
       "mountPoints": [],
       "volumesFrom": [],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/ep3-despachos",
+          "awslogs-group": "/ecs/ep3-frontend",
           "awslogs-region": "us-east-1",
           "awslogs-stream-prefix": "ecs"
         }
@@ -36,7 +27,7 @@
       "systemControls": []
     }
   ],
-  "family": "ep3-despachos-task",
+  "family": "ep3-frontend-task",
   "taskRoleArn": "arn:aws:iam::362352173704:role/LabRole",
   "executionRoleArn": "arn:aws:iam::362352173704:role/LabRole",
   "networkMode": "awsvpc",
@@ -78,9 +69,9 @@
   "requiresCompatibilities": [
     "FARGATE"
   ],
-  "cpu": "512",
-  "memory": "1024",
-  "registeredAt": "2026-06-24T03:57:47.531Z",
+  "cpu": "256",
+  "memory": "512",
+  "registeredAt": "2026-06-24T03:58:02.101Z",
   "registeredBy": "arn:aws:sts::362352173704:assumed-role/voclabs/user3307553=dana.gonzalez",
   "tags": []
 }
