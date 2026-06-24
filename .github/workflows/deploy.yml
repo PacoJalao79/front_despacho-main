@@ -1,43 +1,74 @@
-name: CI/CD Frontend - Despachos
+name: EP3 CI/CD - Frontend React
 
 on:
   push:
     branches:
-      - deploy   # Solo se activa al empujar a esta rama
+      - main
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  ECR_REPOSITORY: ${{ secrets.ECR_FRONTEND_REPO }}
+  ECS_CLUSTER: ep3-cluster
+  ECS_SERVICE: ep3-frontend-service
+  CONTAINER_NAME: frontend
 
 jobs:
   build-push-deploy:
+    name: Build, Push y Deploy - Frontend
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout código
-      uses: actions/checkout@v4
+      - name: 📥 Descargar código fuente
+        uses: actions/checkout@v4
 
-    - name: Login a Docker Hub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: 🔑 Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-    - name: Build y Push imagen
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: true
-        tags: |
-          ${{ secrets.DOCKERHUB_USERNAME }}/front-despachos:latest
-        build-args: |
-          VITE_DESPACHOS_API_URL=${{ secrets.VITE_DESPACHOS_API_URL }}
-          VITE_VENTAS_API_URL=${{ secrets.VITE_VENTAS_API_URL }}
+      - name: 🐳 Login en Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
 
-    - name: Deploy en EC2 Frontend
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.EC2_FRONTEND_HOST }}
-        username: ${{ secrets.EC2_USERNAME }}
-        key: ${{ secrets.EC2_SSH_KEY }}
-        script: |
-          cd ~/app/frontend
-          docker-compose pull
-          docker-compose up -d --force-recreate
-          docker image prune -f
+      - name: 🏗️ Build de imagen Docker (con variables Vite)
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+          VITE_API_VENTAS_URL: ${{ secrets.VITE_API_VENTAS_URL }}
+          VITE_API_DESPACHOS_URL: ${{ secrets.VITE_API_DESPACHOS_URL }}
+        run: |
+          docker build \
+            --build-arg VITE_API_VENTAS_URL=$VITE_API_VENTAS_URL \
+            --build-arg VITE_API_DESPACHOS_URL=$VITE_API_DESPACHOS_URL \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: 📤 Push imagen a ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: 📋 Actualizar Task Definition con nueva imagen
+        id: render-task
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: frontend-task-definition.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.build-image.outputs.image }}
+
+      - name: 🚀 Desplegar en ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-task.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
